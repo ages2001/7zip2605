@@ -1,0 +1,7 @@
+# 7-Zip 26.05 legacy port v1.0 - SHA-256 of the setup installers
+# generated 2026-11-04T10:29:53Z
+
+72d2a64d61ed92b36f54811b0dcf8f8e54bb73fe8a0e3dcda7149bafa39c547c  bin/dos16/7zsetd16.exe
+8e73dd65d59baa58945fa3aa375ae1b27c5dec0fbb014d19d1051176a14944c4  bin/dos32/7zsetd32.exe
+4e72f54b3ae624a2e3abb8b0ce43ff52fe0b0496126c702e0e95a8c4732f35e2  bin/win16/7zsetw16.exe
+db43e4db50604dd3b7755429bf22a8a279763ddd33d9c2116142f6db7388027c  bin/win32/7zsetw32.exe

@@ -1,0 +1,62 @@
+{
+  "History.txt": {
+    "sha256": "173e3472ba08daae508ad781de3c594a3d95506ced4ea6d3bfb6915498803249",
+    "bytes": 31896
+  },
+  "License.txt": {
+    "sha256": "b905449f252efdaa1e90cf4fb66e6b3b77febd2de968d2ece7a57e5f5cd7c001",
+    "bytes": 86016
+  },
+  "Uninst.exe": {
+    "sha256": "35c5627a715d516c0c1727b938216eb18665237e6dccc2b82a98c8f25f06ffeb",
+    "bytes": 329742
+  },
+  "nt/7-zip.dll": {
+    "sha256": "cb818d43186d59a0c6dbfe31c344719c6f6492691de4296a90c1ec97a09707c5",
+    "bytes": 572942
+  },
+  "nt/7z.exe": {
+    "sha256": "2f594b599a455b9bcdef484ae4d49af569d6d8426056fea778ba159d3f84cfd5",
+    "bytes": 3008014
+  },
+  "nt/7z.sfx": {
+    "sha256": "805e7c16ce4fe51b024e894e6bdebdc7faa604770ebd8f73d512c0c5027bf861",
+    "bytes": 900110
+  },
+  "nt/7zCon.sfx": {
+    "sha256": "cd5455364784b239c8c04bd4106f76f7d1bc8cbf498aa49c237562f312fe6708",
+    "bytes": 889358
+  },
+  "nt/7zFM.exe": {
+    "sha256": "b912a73340c9d80d4ea3a2fc8a267dcdedd4ef60a2e81cf29afde972fcda9a47",
+    "bytes": 4209678
+  },
+  "nt/7zG.exe": {
+    "sha256": "5bcbb9bfaf1509160b73dda44f3c9860456a9d7bf5b55f1f1064cb03a6aa4986",
+    "bytes": 3411470
+  },
+  "nt/7zWF.dll": {
+    "sha256": "4c18036f66f01ae8713308daa38089f66e59701c4f773cbfcb93464c5296d7a8",
+    "bytes": 33806
+  },
+  "readme.txt": {
+    "sha256": "99e22814cad772dbb50726f8979f402ff2cc5be12b3a7a62c04fea428f476328",
+    "bytes": 3980
+  },
+  "w32s/7z.exe": {
+    "sha256": "098880ca6ade81f336ffbb8cfb5210e3b79df33d559df62add4fb33e74da7597",
+    "bytes": 3031566
+  },
+  "w32s/7zFM.exe": {
+    "sha256": "6833a18aafadbe2082ad36e8f3923dfc1ae60f8cad896446dc89f820f567b526",
+    "bytes": 4252174
+  },
+  "w32s/7zG.exe": {
+    "sha256": "bcccf09d321719c58fbf85c6a227d17a1c590b72615ebaeb35ed8127de39633c",
+    "bytes": 3452942
+  },
+  "7zsetw32.exe": {
+    "sha256": "db43e4db50604dd3b7755429bf22a8a279763ddd33d9c2116142f6db7388027c",
+    "bytes": 9271803
+  }
+}

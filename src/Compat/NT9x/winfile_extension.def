@@ -1,0 +1,4 @@
+LIBRARY "7zWF"
+EXPORTS
+  FMExtensionProc=FMExtensionProc@12
+  FMExtensionProcW=FMExtensionProcW@12

@@ -1,0 +1,86 @@
+{
+  "debian_packages": [
+    {
+      "name": "binutils-mingw-w64-i686",
+      "version": "2.44-3+12+b1",
+      "file": "binutils-mingw-w64-i686_2.44-3+12+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/b/binutils-mingw-w64/binutils-mingw-w64-i686_2.44-3+12+b1_amd64.deb",
+      "sha256": "a8b90b43c53371e436e804a2335bfef77824dbd3d40c74e01acbed04ad333310"
+    },
+    {
+      "name": "gcc-mingw-w64-base",
+      "version": "14.2.0-19+27+b1",
+      "file": "gcc-mingw-w64-base_14.2.0-19+27+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-mingw-w64/gcc-mingw-w64-base_14.2.0-19+27+b1_amd64.deb",
+      "sha256": "8d2c64b886ab4a435a78ddc4cd3b510f149b65fbd6be8472e8f460627562718a"
+    },
+    {
+      "name": "gcc-mingw-w64-i686-win32",
+      "version": "14.2.0-19+27+b1",
+      "file": "gcc-mingw-w64-i686-win32_14.2.0-19+27+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-mingw-w64/gcc-mingw-w64-i686-win32_14.2.0-19+27+b1_amd64.deb",
+      "sha256": "918cc18b87ccaa197a2abf53d00382cb48779a99ea5c9c10413099d92a4dfa1f"
+    },
+    {
+      "name": "gcc-mingw-w64-i686-win32-runtime",
+      "version": "14.2.0-19+27+b1",
+      "file": "gcc-mingw-w64-i686-win32-runtime_14.2.0-19+27+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-mingw-w64/gcc-mingw-w64-i686-win32-runtime_14.2.0-19+27+b1_amd64.deb",
+      "sha256": "1bf47cc4727c2be08930cbc7eb8b3a37a67eb5cf02ee72a3834c2fd2ebfc6bbc"
+    },
+    {
+      "name": "g++-mingw-w64-i686-win32",
+      "version": "14.2.0-19+27+b1",
+      "file": "g++-mingw-w64-i686-win32_14.2.0-19+27+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-mingw-w64/g++-mingw-w64-i686-win32_14.2.0-19+27+b1_amd64.deb",
+      "sha256": "59d5d4ac2a4ce7ad58e25c507574b543f6a27f0e7c9e90315887d7c71500ad73"
+    },
+    {
+      "name": "mingw-w64-common",
+      "version": "12.0.0-5",
+      "file": "mingw-w64-common_12.0.0-5_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/m/mingw-w64/mingw-w64-common_12.0.0-5_all.deb",
+      "sha256": "97dce5d0d8aff1cade4786ad4ef5078345477a598829afcac2e7f2fbc5399990"
+    },
+    {
+      "name": "mingw-w64-i686-dev",
+      "version": "12.0.0-5",
+      "file": "mingw-w64-i686-dev_12.0.0-5_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/m/mingw-w64/mingw-w64-i686-dev_12.0.0-5_all.deb",
+      "sha256": "ddd5f65c29014ae67b89df146a8016f38056a9d8eadbccd17cae4c00ccd01528"
+    },
+    {
+      "name": "gcc-14-source",
+      "version": "14.2.0-19",
+      "file": "gcc-14-source_14.2.0-19_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gcc-14/gcc-14-source_14.2.0-19_all.deb",
+      "sha256": "44e6872715a380fe08418ea42b58d3c90de7d5dfd9f525bbf4dacba415c2266a"
+    },
+    {
+      "name": "libmpfr-dev",
+      "version": "4.2.2-1",
+      "file": "libmpfr-dev_4.2.2-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/m/mpfr4/libmpfr-dev_4.2.2-1_amd64.deb",
+      "sha256": "43cbe73a48cce65232ad5d4219a67dfdd0974f45aa88d381ae051d64052b996a"
+    },
+    {
+      "name": "libmpc-dev",
+      "version": "1.3.1-1+b3",
+      "file": "libmpc-dev_1.3.1-1+b3_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/m/mpclib3/libmpc-dev_1.3.1-1+b3_amd64.deb",
+      "sha256": "01927983fa7a448180a0162e73619a1e8ad47839cea2b6dcc31c304b903e7fc0"
+    },
+    {
+      "name": "7zip",
+      "version": "25.01+dfsg-1~deb13u2",
+      "file": "7zip_25.01+dfsg-1~deb13u2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/7/7zip/7zip_25.01+dfsg-1~deb13u2_amd64.deb",
+      "sha256": "b2cb210bee3be6a10230b38b8645d71846d19364b157f44fd08e1a54cae1652f"
+    }
+  ],
+  "mingw_source_commit": "819a6ec2ea87c19814b287e21d65e0dc7f05abba",
+  "official_manual_installer": {
+    "url": "https://www.7-zip.org/a/7z2605.exe",
+    "sha256": "6435a470fe7c4769962dbed8a60c641ee21401c833ced06077c80e33e7845a5e"
+  }
+}

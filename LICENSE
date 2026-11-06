@@ -1,0 +1,61 @@
+7-Zip 26.05 legacy port - License
+=================================
+
+This repository is a legacy port of 7-Zip to old Windows and DOS platforms.
+It is free software and is distributed under the same terms as 7-Zip itself,
+primarily the GNU Lesser General Public License, version 2.1 or (at your
+option) any later version (GNU LGPL-2.1-or-later).
+
+
+Copyright
+---------
+
+  7-Zip                     Copyright (C) 1999-2026 Igor Pavlov
+  Legacy port (this work)   Copyright (C) 2026 ages2001
+
+7-Zip was created by Igor Pavlov. This port adapts 7-Zip 26.05 to Windows
+3.0/3.1x, Windows NT 3.1-4.0 / 2000 / XP(x64), Windows 9x, Win32s and DOS; it
+adds native 16-bit Windows and DOS front ends and the platform installers. All
+original 7-Zip copyright and license notices are preserved in the source files.
+
+
+License terms
+-------------
+
+The license structure is inherited from 7-Zip and is unchanged:
+
+  - Most source files are under the GNU LGPL.
+  - CPP/7zip/Compress/Rar* (RAR decoding) is under the GNU LGPL with the
+    "unRAR license restriction": you must follow both the GNU LGPL and the
+    unRAR restriction (the RAR code may not be used to recreate the RAR
+    compression algorithm).
+  - A few decoders are under BSD licenses (LZFSE/ZSTD: BSD 3-clause,
+    Copyright Apple Inc. and Facebook Inc.; XXH64: BSD 2-clause).
+  - Some files are in the public domain where stated in the file.
+
+The additions made by this port (the native 16-bit Windows/DOS front ends, the
+Win16/DOS/NT/Win32s adapters and the installers under src/Compat) are released
+under the GNU LGPL-2.1-or-later, so the project as a whole remains LGPL-
+compliant.
+
+The complete, authoritative 7-Zip license text is included in this repository
+as `LICENSE-7zip.txt` (a verbatim copy of 7-Zip's own `src/DOC/License.txt`).
+The full text of the GNU LGPL is available at https://www.gnu.org/licenses/ .
+
+
+No warranty
+-----------
+
+This software is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+details.
+
+
+Not an official 7-Zip release
+-----------------------------
+
+This is an independent, community-made port. It is NOT an official 7-Zip
+product and is NOT affiliated with, sponsored by, or endorsed by Igor Pavlov
+or the 7-Zip project. "7-Zip" is used only to identify the software this port
+is derived from. For the official 7-Zip, see https://www.7-zip.org .

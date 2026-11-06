@@ -1,0 +1,15 @@
+#include <windows.h>
+1 ICON "../../CPP/7zip/UI/FileManager/FM.ico"
+500 DIALOG 0, 0, 260, 132
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "7-Zip 26.05 Setup v1.0"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "Windows 3.0/3.1x 16-bit edition (8086) - port v1.0", -1, 8, 8, 244, 12
+ LTEXT "Install to a new directory:", -1, 8, 26, 244, 10
+ EDITTEXT 501, 8, 40, 244, 14, ES_AUTOHSCROLL
+ LTEXT "All required application files are included. Existing installations are preserved.", -1, 8, 62, 244, 22
+ LTEXT "", 502, 8, 88, 244, 18
+ DEFPUSHBUTTON "Install", IDOK, 132, 110, 56, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 196, 110, 56, 14
+END

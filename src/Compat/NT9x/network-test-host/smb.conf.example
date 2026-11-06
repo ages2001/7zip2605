@@ -1,0 +1,30 @@
+[global]
+rpc start on demand helpers = false
+log level = 2
+ncalrpc dir = /workspace/nt9x-tests/network/samba/run/ncalrpc
+workgroup = WORKGROUP
+netbios name = Z7HOST
+interfaces = 127.0.0.1
+bind interfaces only = yes
+smb ports = 139
+server min protocol = NT1
+client min protocol = NT1
+server signing = disabled
+ntlm auth = yes
+map to guest = Bad User
+guest account = agent
+security = user
+load printers = no
+printing = bsd
+printcap name = /dev/null
+disable spoolss = yes
+private dir = /workspace/nt9x-tests/network/samba/private
+state directory = /workspace/nt9x-tests/network/samba/state
+lock directory = /workspace/nt9x-tests/network/samba/lock
+cache directory = /workspace/nt9x-tests/network/samba/cache
+pid directory = /workspace/nt9x-tests/network/samba/run
+log file = /workspace/nt9x-tests/network/samba/log.%m
+[Z7TEST]
+path = /workspace/nt9x-tests/network/share
+read only = no
+guest ok = yes

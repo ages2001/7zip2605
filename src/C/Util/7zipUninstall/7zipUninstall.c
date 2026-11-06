@@ -1,0 +1,1564 @@
+/* 7zipUninstall.c - 7-Zip Uninstaller
+: Igor Pavlov : Public domain */
+
+#include "Precomp.h"
+
+// #define SZ_ERROR_ABORT 100
+
+#include "../../7zTypes.h"
+#include "../../7zWindows.h"
+
+#if defined(_MSC_VER) && _MSC_VER < 1600
+#pragma warning(disable : 4201) // nonstandard extension used : nameless struct/union
+#endif
+
+#ifdef Z7_OLD_WIN_SDK
+struct IShellView;
+#define SHFOLDERAPI  EXTERN_C DECLSPEC_IMPORT HRESULT STDAPICALLTYPE
+SHFOLDERAPI SHGetFolderPathW(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPWSTR pszPath);
+#define BIF_NEWDIALOGSTYLE     0x0040   // Use the new dialog layout with the ability to resize
+typedef enum {
+    SHGFP_TYPE_CURRENT  = 0,   // current value for user, verify it exists
+    SHGFP_TYPE_DEFAULT  = 1,   // default value, may not exist
+} SHGFP_TYPE;
+#endif
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include <shlobj.h>
+#else
+#include <ShlObj.h>
+#endif
+
+#include "../../7zVersion.h"
+
+#include "resource.h"
+#ifdef Z7_LEGACY_WIN32
+#include "../../../Compat/NT9x/setup_shortcuts.h"
+#endif
+
+
+
+
+#ifdef Z7_LEGACY_WIN32
+#define Z7_UNINSTALL_NAME "Uninst.exe"
+#else
+#define Z7_UNINSTALL_NAME "Uninstall.exe"
+#endif
+
+#define LLL_(quote) L##quote
+#define LLL(quote) LLL_(quote)
+
+#define wcscat lstrcatW
+#define wcslen (size_t)lstrlenW
+#define wcscpy lstrcpyW
+
+// static LPCWSTR const k_7zip = L"7-Zip";
+
+// #define Z7_64BIT_INSTALLER 1
+
+#ifdef _WIN64
+  #define Z7_64BIT_INSTALLER 1
+#endif
+
+#define k_7zip_with_Ver_base L"7-Zip " LLL(MY_VERSION)
+
+#ifdef Z7_64BIT_INSTALLER
+
+  // #define USE_7ZIP_32_DLL
+
+  #if defined(_M_ARM64) || defined(_M_ARM)
+    #define k_Postfix  L" (arm64)"
+  #else
+    #define k_Postfix  L" (x64)"
+    #define USE_7ZIP_32_DLL
+  #endif
+#else
+  #if defined(_M_ARM64) || defined(_M_ARM)
+    #define k_Postfix  L" (arm)"
+  #else
+    // #define k_Postfix  L" (x86)"
+    #define k_Postfix
+  #endif
+#endif
+
+#define k_7zip_with_Ver  k_7zip_with_Ver_base k_Postfix
+
+static LPCWSTR const k_7zip_with_Ver_Uninstall = k_7zip_with_Ver L" Uninstall";
+
+static LPCWSTR const k_Reg_Software_7zip = L"Software\\7-Zip";
+
+static LPCWSTR const k_Reg_Path = L"Path";
+ 
+static LPCWSTR const k_Reg_Path32 = L"Path"
+  #ifdef Z7_64BIT_INSTALLER
+    L"64"
+  #else
+    L"32"
+  #endif
+  ;
+
+#if defined(Z7_64BIT_INSTALLER) && !defined(_WIN64)
+  #define k_Reg_WOW_Flag KEY_WOW64_64KEY
+#else
+  #define k_Reg_WOW_Flag 0
+#endif
+
+#ifdef USE_7ZIP_32_DLL
+#ifdef _WIN64
+  #define k_Reg_WOW_Flag_32 KEY_WOW64_32KEY
+#else
+  #define k_Reg_WOW_Flag_32 0
+#endif
+#endif
+
+#define k_7zip_CLSID L"{23170F69-40C1-278A-1000-000100020000}"
+
+static LPCWSTR const k_Reg_CLSID_7zip = L"CLSID\\" k_7zip_CLSID;
+static LPCWSTR const k_Reg_CLSID_7zip_Inproc = L"CLSID\\" k_7zip_CLSID L"\\InprocServer32";
+
+
+#define g_AllUsers True
+
+static BoolInt g_Install_was_Pressed;
+static BoolInt g_Finished;
+static BoolInt g_SilentMode;
+
+static HWND g_HWND;
+static HWND g_Path_HWND;
+static HWND g_InfoLine_HWND;
+static HWND g_Progress_HWND;
+
+// RegDeleteKeyExW is supported starting from win2003sp1/xp-pro-x64
+// Z7_WIN32_WINNT_MIN < 0x0600  // Vista
+#if !defined(Z7_WIN32_WINNT_MIN) \
+    || Z7_WIN32_WINNT_MIN  < 0x0502  /* < win2003 */ \
+    || Z7_WIN32_WINNT_MIN == 0x0502 && !defined(_M_AMD64)
+#define Z7_USE_DYN_RegDeleteKeyExW
+#endif
+
+#ifdef Z7_USE_DYN_RegDeleteKeyExW
+Z7_DIAGNOSTIC_IGNORE_CAST_FUNCTION
+typedef LONG (APIENTRY *Func_RegDeleteKeyExW)(HKEY hKey, LPCWSTR lpSubKey, REGSAM samDesired, DWORD Reserved);
+static Func_RegDeleteKeyExW func_RegDeleteKeyExW;
+#endif
+
+static WCHAR cmd[MAX_PATH + 4];
+static WCHAR cmdError[MAX_PATH + 4];
+static WCHAR path[MAX_PATH * 2 + 40];
+static WCHAR workDir[MAX_PATH + 10];
+static WCHAR modulePath[MAX_PATH + 10];
+static WCHAR modulePrefix[MAX_PATH + 10];
+static WCHAR tempPath[MAX_PATH * 2 + 40];
+static WCHAR cmdLine[MAX_PATH * 3 + 40];
+static WCHAR copyPath[MAX_PATH * 2 + 40];
+
+static LPCWSTR const kUninstallExe = LLL(Z7_UNINSTALL_NAME);
+
+/* Hex digits in the random %TEMP%\7zXXXXXX copy directory (8.3-safe on NT 3.1). */
+#ifdef Z7_LEGACY_WIN32
+  #define Z7_TEMP_HEX_DIGITS 6
+#else
+  #define Z7_TEMP_HEX_DIGITS 8
+#endif
+
+#ifdef Z7_LEGACY_WIN32
+static BoolInt IsWin32s(void)
+{
+  const DWORD v = GetVersion();
+  return (v & 0x80000000UL) && (v & 255) == 3;
+}
+
+/* Set when the loaded Uninst.exe image must be removed after this process
+   exits (Windows 3.1x + Win32s in-place uninstall). */
+static BoolInt g_Win32sSelfDeletePending;
+#endif
+
+#define MAKE_CHAR_UPPER(c) ((((c) >= 'a' && (c) <= 'z') ? (c) - 0x20 : (c)))
+
+
+static void CpyAscii(WCHAR *dest, const char *s)
+{
+  for (;;)
+  {
+    const Byte b = (Byte)*s++;
+    *dest++ = b;
+    if (b == 0)
+      return;
+  }
+}
+
+static void CatAscii(WCHAR *dest, const char *s)
+{
+  dest += wcslen(dest);
+  CpyAscii(dest, s);
+}
+
+static void PrintErrorMessage(const char *s1, const WCHAR *s2)
+{
+  WCHAR m[MAX_PATH + 512];
+  m[0] = 0;
+  CatAscii(m, "ERROR:");
+  if (s1)
+  {
+    CatAscii(m, "\n");
+    CatAscii(m, s1);
+  }
+  if (s2)
+  {
+    CatAscii(m, "\n");
+    wcscat(m, s2);
+  }
+  MessageBoxW(g_HWND, m, k_7zip_with_Ver_Uninstall, MB_ICONERROR | MB_OK);
+}
+
+
+static BoolInt AreStringsEqual_NoCase(const WCHAR *s1, const WCHAR *s2)
+{
+  for (;;)
+  {
+    WCHAR c1 = *s1++;
+    WCHAR c2 = *s2++;
+    if (c1 != c2 && MAKE_CHAR_UPPER(c1) != MAKE_CHAR_UPPER(c2))
+      return False;
+    if (c2 == 0)
+      return True;
+  }
+}
+
+static BoolInt IsString1PrefixedByString2_NoCase(const WCHAR *s1, const WCHAR *s2)
+{
+  for (;;)
+  {
+    WCHAR c1;
+    const WCHAR c2 = *s2++;
+    if (c2 == 0)
+      return True;
+    c1 = *s1++;
+    if (c1 != c2 && MAKE_CHAR_UPPER(c1) != MAKE_CHAR_UPPER(c2))
+      return False;
+  }
+}
+
+static void NormalizePrefix(WCHAR *s)
+{
+  const size_t len = wcslen(s);
+  if (len != 0)
+    if (s[len - 1] != WCHAR_PATH_SEPARATOR)
+    {
+      s[len] = WCHAR_PATH_SEPARATOR;
+      s[len + 1] = 0;
+    }
+}
+
+static int MyRegistry_QueryString(HKEY hKey, LPCWSTR name, LPWSTR dest)
+{
+  DWORD cnt = MAX_PATH * sizeof(name[0]);
+  DWORD type = 0;
+  const LONG res = RegQueryValueExW(hKey, name, NULL, &type, (LPBYTE)dest, &cnt);
+  if (type != REG_SZ)
+    return False;
+  return res == ERROR_SUCCESS;
+}
+
+static int MyRegistry_QueryString2(HKEY hKey, LPCWSTR keyName, LPCWSTR valName, LPWSTR dest)
+{
+  HKEY key = 0;
+  const LONG res = RegOpenKeyExW(hKey, keyName, 0, KEY_READ | k_Reg_WOW_Flag, &key);
+  if (res != ERROR_SUCCESS)
+    return False;
+  {
+    const BoolInt res2 = MyRegistry_QueryString(key, valName, dest);
+    RegCloseKey(key);
+    return res2;
+  }
+}
+
+static LONG MyRegistry_OpenKey_ReadWrite(HKEY parentKey, LPCWSTR name, HKEY *destKey)
+{
+  return RegOpenKeyExW(parentKey, name, 0, KEY_READ | KEY_WRITE | k_Reg_WOW_Flag, destKey);
+}
+
+static LONG MyRegistry_DeleteKey(HKEY parentKey, LPCWSTR name)
+{
+#if k_Reg_WOW_Flag != 0
+#ifdef Z7_USE_DYN_RegDeleteKeyExW
+    if (!func_RegDeleteKeyExW)
+      return E_FAIL;
+    return func_RegDeleteKeyExW
+#else
+    return      RegDeleteKeyExW
+#endif
+      (parentKey, name, k_Reg_WOW_Flag, 0);
+#else
+    return RegDeleteKeyW(parentKey, name);
+#endif
+}
+
+#ifdef USE_7ZIP_32_DLL
+
+static int MyRegistry_QueryString2_32(HKEY hKey, LPCWSTR keyName, LPCWSTR valName, LPWSTR dest)
+{
+  HKEY key = 0;
+  const LONG res = RegOpenKeyExW(hKey, keyName, 0, KEY_READ | k_Reg_WOW_Flag_32, &key);
+  if (res != ERROR_SUCCESS)
+    return False;
+  {
+    const BoolInt res2 = MyRegistry_QueryString(key, valName, dest);
+    RegCloseKey(key);
+    return res2;
+  }
+}
+
+static LONG MyRegistry_OpenKey_ReadWrite_32(HKEY parentKey, LPCWSTR name, HKEY *destKey)
+{
+  return RegOpenKeyExW(parentKey, name, 0, KEY_READ | KEY_WRITE | k_Reg_WOW_Flag_32, destKey);
+}
+
+static LONG MyRegistry_DeleteKey_32(HKEY parentKey, LPCWSTR name)
+{
+#if k_Reg_WOW_Flag_32 != 0
+#ifdef Z7_USE_DYN_RegDeleteKeyExW
+    if (!func_RegDeleteKeyExW)
+      return E_FAIL;
+    return func_RegDeleteKeyExW
+#else
+    return      RegDeleteKeyExW
+#endif
+      (parentKey, name, k_Reg_WOW_Flag_32, 0);
+#else
+    return RegDeleteKeyW(parentKey, name);
+#endif
+}
+
+#endif
+
+
+
+
+static void MyReg_DeleteVal_Path_if_Equal(HKEY hKey, LPCWSTR name)
+{
+  WCHAR s[MAX_PATH + 10];
+  if (MyRegistry_QueryString(hKey, name, s))
+  {
+    NormalizePrefix(s);
+    if (AreStringsEqual_NoCase(s, path))
+      RegDeleteValueW(hKey, name);
+  }
+}
+
+static void SetRegKey_Path2(HKEY parentKey)
+{
+  HKEY key = 0;
+  const LONG res = MyRegistry_OpenKey_ReadWrite(parentKey, k_Reg_Software_7zip, &key);
+  if (res == ERROR_SUCCESS)
+  {
+    MyReg_DeleteVal_Path_if_Equal(key, k_Reg_Path32);
+    MyReg_DeleteVal_Path_if_Equal(key, k_Reg_Path);
+
+    RegCloseKey(key);
+    // MyRegistry_DeleteKey(parentKey, k_Reg_Software_7zip);
+  }
+}
+
+static void SetRegKey_Path(void)
+{
+  SetRegKey_Path2(HKEY_CURRENT_USER);
+  SetRegKey_Path2(HKEY_LOCAL_MACHINE);
+}
+
+static HRESULT CreateShellLink(LPCWSTR srcPath, LPCWSTR targetPath)
+{
+  IShellLinkW *sl;
+ 
+  // CoInitialize has already been called.
+  HRESULT hres = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLinkW, (LPVOID*)&sl);
+
+  if (SUCCEEDED(hres))
+  {
+    IPersistFile *pf;
+    
+    hres = sl->lpVtbl->QueryInterface(sl, &IID_IPersistFile, (LPVOID *)&pf);
+   
+    if (SUCCEEDED(hres))
+    {
+      WCHAR s[MAX_PATH + 10];
+      hres = pf->lpVtbl->Load(pf, srcPath, TRUE);
+      pf->lpVtbl->Release(pf);
+
+      if (SUCCEEDED(hres))
+      {
+        hres = sl->lpVtbl->GetPath(sl, s, MAX_PATH, NULL, 0); // SLGP_RAWPATH
+        if (!AreStringsEqual_NoCase(s, targetPath))
+          hres = S_FALSE;
+      }
+    }
+
+    sl->lpVtbl->Release(sl);
+  }
+
+  return hres;
+}
+
+#ifdef Z7_LEGACY_WIN32
+static DWORD g_ShortcutError;
+#endif
+static void SetShellProgramsGroup(HWND hwndOwner)
+{
+  #if defined(Z7_LEGACY_WIN32)
+  UNUSED_VAR(hwndOwner)
+  g_ShortcutError = Z7SetupShortcutsW(path, TRUE);
+  if (!g_ShortcutError) g_ShortcutError = Z7SetupWinFileW(path, TRUE);
+  #elif defined(UNDER_CE)
+
+  UNUSED_VAR(hwndOwner)
+
+  #else
+
+  unsigned i = (g_AllUsers ? 1 : 2);
+
+  for (; i < 3; i++)
+  {
+    // BoolInt isOK = True;
+    WCHAR link[MAX_PATH + 40];
+    WCHAR destPath[MAX_PATH + 40];
+
+    link[0] = 0;
+    
+    if (SHGetFolderPathW(hwndOwner,
+        i == 1 ? CSIDL_COMMON_PROGRAMS : CSIDL_PROGRAMS,
+        NULL, SHGFP_TYPE_CURRENT, link) != S_OK)
+      continue;
+
+    NormalizePrefix(link);
+    CatAscii(link, "7-Zip\\");
+    
+    {
+      const size_t baseLen = wcslen(link);
+      unsigned k;
+      BoolInt needDelete = False;
+
+      for (k = 0; k < 2; k++)
+      {
+        CpyAscii(link + baseLen, k == 0 ?
+            "7-Zip File Manager.lnk" :
+            "7-Zip Help.lnk");
+        wcscpy(destPath, path);
+        CatAscii(destPath, k == 0 ?
+            "7zFM.exe" :
+            "7-zip.chm");
+        
+        if (CreateShellLink(link, destPath) == S_OK)
+        {
+          needDelete = True;
+          DeleteFileW(link);
+        }
+      }
+
+      if (needDelete)
+      {
+        link[baseLen] = 0;
+        RemoveDirectoryW(link);
+      }
+    }
+  }
+
+  #endif
+}
+
+
+static LPCSTR const k_ShellEx_Items[] =
+{
+    "*\\shellex\\ContextMenuHandlers"
+  , "Directory\\shellex\\ContextMenuHandlers"
+  , "Folder\\shellex\\ContextMenuHandlers"
+  , "Directory\\shellex\\DragDropHandlers"
+  , "Drive\\shellex\\DragDropHandlers"
+};
+
+static LPCWSTR const k_Shell_Approved = L"Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+
+static LPCWSTR const k_AppPaths_7zFm = L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\7zFM.exe";
+#define k_REG_Uninstall L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+static LPCWSTR const k_Uninstall_7zip = k_REG_Uninstall L"7-Zip";
+
+
+static void RemoveQuotes(WCHAR *s)
+{
+  const size_t len = wcslen(s);
+  size_t i;
+  if (len == 0 || s[0] != '\"' || s[len - 1] != '\"')
+    return;
+  for (i = 0; i < len; i++)
+    s[i] = s[i + 1];
+  s[len - 2] = 0;
+}
+
+static BoolInt AreEqual_Path_PrefixName(const WCHAR *s, const WCHAR *prefix, const WCHAR *name)
+{
+  if (!IsString1PrefixedByString2_NoCase(s, prefix))
+    return False;
+  return AreStringsEqual_NoCase(s + wcslen(prefix), name);
+}
+
+static void WriteCLSID(void)
+{
+  WCHAR s[MAX_PATH + 30];
+  
+  if (MyRegistry_QueryString2(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip_Inproc, NULL, s))
+  {
+    if (AreEqual_Path_PrefixName(s, path, L"7-zip.dll"))
+    {
+      {
+        const LONG res = MyRegistry_DeleteKey(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip_Inproc);
+        if (res == ERROR_SUCCESS)
+          MyRegistry_DeleteKey(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip);
+      }
+
+      {
+        unsigned i;
+        for (i = 0; i < Z7_ARRAY_SIZE(k_ShellEx_Items); i++)
+        {
+          WCHAR destPath[MAX_PATH];
+          CpyAscii(destPath, k_ShellEx_Items[i]);
+          CatAscii(destPath, "\\7-Zip");
+          
+          MyRegistry_DeleteKey(HKEY_CLASSES_ROOT, destPath);
+        }
+      }
+
+      {
+        HKEY destKey = 0;
+        const LONG res = MyRegistry_OpenKey_ReadWrite(HKEY_LOCAL_MACHINE, k_Shell_Approved, &destKey);
+        if (res == ERROR_SUCCESS)
+        {
+          RegDeleteValueW(destKey, k_7zip_CLSID);
+          /* res = */ RegCloseKey(destKey);
+        }
+      }
+    }
+  }
+
+  
+  #ifdef USE_7ZIP_32_DLL
+  
+  if (MyRegistry_QueryString2_32(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip_Inproc, NULL, s))
+  {
+    if (AreEqual_Path_PrefixName(s, path, L"7-zip32.dll"))
+    {
+      {
+        const LONG res = MyRegistry_DeleteKey_32(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip_Inproc);
+        if (res == ERROR_SUCCESS)
+          MyRegistry_DeleteKey_32(HKEY_CLASSES_ROOT, k_Reg_CLSID_7zip);
+      }
+
+      {
+        unsigned i;
+        for (i = 0; i < Z7_ARRAY_SIZE(k_ShellEx_Items); i++)
+        {
+          WCHAR destPath[MAX_PATH];
+          CpyAscii(destPath, k_ShellEx_Items[i]);
+          CatAscii(destPath, "\\7-Zip");
+          
+          MyRegistry_DeleteKey_32(HKEY_CLASSES_ROOT, destPath);
+        }
+      }
+
+      {
+        HKEY destKey = 0;
+        const LONG res = MyRegistry_OpenKey_ReadWrite_32(HKEY_LOCAL_MACHINE, k_Shell_Approved, &destKey);
+        if (res == ERROR_SUCCESS)
+        {
+          RegDeleteValueW(destKey, k_7zip_CLSID);
+          /* res = */ RegCloseKey(destKey);
+        }
+      }
+    }
+  }
+  
+  #endif
+
+
+  if (MyRegistry_QueryString2(HKEY_LOCAL_MACHINE, k_AppPaths_7zFm, NULL, s))
+  {
+    // RemoveQuotes(s);
+    if (AreEqual_Path_PrefixName(s, path, L"7zFM.exe"))
+      MyRegistry_DeleteKey(HKEY_LOCAL_MACHINE, k_AppPaths_7zFm);
+  }
+
+  if (MyRegistry_QueryString2(HKEY_LOCAL_MACHINE, k_Uninstall_7zip, L"UninstallString", s))
+  {
+    RemoveQuotes(s);
+    if (AreEqual_Path_PrefixName(s, path, kUninstallExe))
+      MyRegistry_DeleteKey(HKEY_LOCAL_MACHINE, k_Uninstall_7zip);
+  }
+}
+
+
+static const WCHAR *GetCmdParam(const WCHAR *s)
+{
+  unsigned pos = 0;
+  BoolInt quoteMode = False;
+  for (;; s++)
+  {
+    const WCHAR c = *s;
+    if (c == 0 || (c == L' ' && !quoteMode))
+      break;
+    if (c == L'\"')
+    {
+      quoteMode = !quoteMode;
+      continue;
+    }
+    if (pos >= Z7_ARRAY_SIZE(cmd) - 1)
+      exit(1);
+    cmd[pos++] = c;
+  }
+  cmd[pos] = 0;
+  return s;
+}
+
+/*
+static void RemoveQuotes(WCHAR *s)
+{
+  const WCHAR *src = s;
+  for (;;)
+  {
+    WCHAR c = *src++;
+    if (c == '\"')
+      continue;
+    *s++ = c;
+    if (c == 0)
+      return;
+  }
+}
+*/
+
+static BoolInt DoesFileOrDirExist(void)
+{
+  return (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES);
+}
+
+static BOOL RemoveFileAfterReboot2(const WCHAR *s)
+{
+  #ifndef UNDER_CE
+  return MoveFileExW(s, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+  #else
+  UNUSED_VAR(s)
+  return TRUE;
+  #endif
+}
+
+static BOOL RemoveFileAfterReboot(void)
+{
+  return RemoveFileAfterReboot2(path);
+}
+
+// #define IS_LIMIT_CHAR(c) (c == 0 || c == ' ')
+
+static BoolInt IsThereSpace(const WCHAR *s)
+{
+  for (;;)
+  {
+    const WCHAR c = *s++;
+    if (c == 0)
+      return False;
+    if (c == ' ')
+      return True;
+  }
+}
+
+static void AddPathParam(WCHAR *dest, const WCHAR *src)
+{
+  const BoolInt needQuote = IsThereSpace(src);
+  if (needQuote)
+    CatAscii(dest, "\"");
+  wcscat(dest, src);
+  if (needQuote)
+    CatAscii(dest, "\"");
+}
+
+
+
+static BoolInt GetErrorMessage(DWORD errorCode, WCHAR *message)
+{
+  LPWSTR msgBuf;
+  if (FormatMessageW(
+          FORMAT_MESSAGE_ALLOCATE_BUFFER
+        | FORMAT_MESSAGE_FROM_SYSTEM
+        | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, errorCode, 0, (LPWSTR) &msgBuf, 0, NULL) == 0)
+    return False;
+  wcscpy(message, msgBuf);
+  LocalFree(msgBuf);
+  return True;
+}
+
+static BOOL RemoveDir(void)
+{
+  const DWORD attrib = GetFileAttributesW(path);
+  if (attrib == INVALID_FILE_ATTRIBUTES)
+    return TRUE;
+#ifdef Z7_LEGACY_WIN32
+  {
+    WCHAR pattern[MAX_PATH + 4];
+    HANDLE search;
+    wcscpy(pattern, path);
+    NormalizePrefix(pattern);
+    CatAscii(pattern, "*");
+    if (!(GetVersion() & 0x80000000UL)) {
+      WIN32_FIND_DATAW entry;
+      search = FindFirstFileW(pattern, &entry);
+      if (search != INVALID_HANDLE_VALUE) {
+        do {
+          if (wcscmp(entry.cFileName, L".") && wcscmp(entry.cFileName, L"..")) {
+            FindClose(search);
+            return TRUE;
+          }
+        } while (FindNextFileW(search, &entry));
+        FindClose(search);
+      }
+    } else {
+      WIN32_FIND_DATAA entry;
+      char ansiPattern[MAX_PATH + 4];
+      BOOL used = FALSE;
+      if (!WideCharToMultiByte(CP_ACP, 0, pattern, -1, ansiPattern,
+          sizeof(ansiPattern), NULL, &used) || used) return TRUE;
+      search = FindFirstFileA(ansiPattern, &entry);
+      if (search != INVALID_HANDLE_VALUE) {
+        do {
+          if (lstrcmpA(entry.cFileName, ".") && lstrcmpA(entry.cFileName, "..")) {
+            FindClose(search);
+            return TRUE;
+          }
+        } while (FindNextFileA(search, &entry));
+        FindClose(search);
+      }
+    }
+  }
+#endif
+  if (RemoveDirectoryW(path))
+    return TRUE;
+#ifdef Z7_LEGACY_WIN32
+  /* A user may keep unrelated files in the installation directory. */
+  if (GetLastError() == ERROR_DIR_NOT_EMPTY) return TRUE;
+#endif
+  return RemoveFileAfterReboot();
+}
+
+
+
+
+
+#define k_Lang "Lang"
+
+// NUM_LANG_TXT_FILES files are placed before en.ttt
+#define NUM_LANG_TXT_FILES 92
+
+#ifdef USE_7ZIP_32_DLL
+  #define NUM_EXTRA_FILES_64BIT 1
+#else
+  #define NUM_EXTRA_FILES_64BIT 0
+#endif
+
+#ifdef Z7_LEGACY_WIN32
+#define NUM_WINFILE_FILES 1
+#else
+#define NUM_WINFILE_FILES 0
+#endif
+#define NUM_FILES (NUM_LANG_TXT_FILES + 1 + 13 + NUM_EXTRA_FILES_64BIT + NUM_WINFILE_FILES)
+
+static const char * const k_Names =
+  "af an ar ast az ba be bg bn br ca co cs cy da de el eo es et eu ext"
+  " fa fi fr fur fy ga gl gu he hi hr hu hy id io is it ja ka kaa kab kk ko ku ku-ckb ky"
+  " lij lt lv mk mn mng mng2 mr ms nb ne nl nn pa-in pl ps pt pt-br ro ru"
+  " sa si sk sl sq sr-spc sr-spl sv sw ta tg th tk tr tt ug uk uz uz-cyrl va vi yo zh-cn zh-tw"
+  " en.ttt"
+  " descript.ion"
+  " History.txt"
+  " License.txt"
+  " readme.txt"
+  " 7-zip.chm"
+  " 7z.sfx"
+  " 7zCon.sfx"
+  " 7z.exe"
+  " 7zG.exe"
+  " 7z.dll"
+  " 7zFM.exe"
+  #ifdef Z7_LEGACY_WIN32
+  " 7zWF.dll"
+  #endif
+  #ifdef USE_7ZIP_32_DLL
+  " 7-zip32.dll"
+  #endif
+  " 7-zip.dll"
+  " " Z7_UNINSTALL_NAME;
+
+
+
+static int Install(void)
+{
+  SRes res = SZ_OK;
+  WRes winRes = 0;
+  
+  // BoolInt needReboot = False;
+  const size_t pathLen = wcslen(path);
+
+  if (!g_SilentMode)
+  {
+    ShowWindow(g_Progress_HWND, SW_SHOW);
+    ShowWindow(g_InfoLine_HWND, SW_SHOW);
+    SendMessage(g_Progress_HWND, PBM_SETRANGE32, 0, NUM_FILES);
+  }
+
+  {
+    unsigned i;
+    const char *curName = k_Names;
+
+    for (i = 0; *curName != 0; i++)
+    {
+      WCHAR *temp;
+
+      if (!g_SilentMode)
+      {
+        MSG msg;
+        
+        // g_HWND
+        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+          if (!IsDialogMessage(g_HWND, &msg))
+          {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+          }
+          if (!g_HWND)
+            return 1;
+        }
+
+        // Sleep(1);
+        SendMessage(g_Progress_HWND, PBM_SETPOS, i, 0);
+      }
+
+      path[pathLen] = 0;
+      temp = path + pathLen;
+      
+      if (i <= NUM_LANG_TXT_FILES)
+        CpyAscii(temp, k_Lang "\\");
+      
+      {
+        WCHAR *dest = temp + wcslen(temp);
+
+        for (;;)
+        {
+          const char c = *curName;
+          if (c == 0)
+            break;
+          curName++;
+          if (c == ' ')
+            break;
+          *dest++ = (Byte)c;
+        }
+
+        *dest = 0;
+      }
+
+      if (i < NUM_LANG_TXT_FILES)
+        CatAscii(temp, ".txt");
+  
+      if (!g_SilentMode)
+        SetWindowTextW(g_InfoLine_HWND, temp);
+
+      {
+        const DWORD attrib = GetFileAttributesW(path);
+        if (attrib == INVALID_FILE_ATTRIBUTES)
+          continue;
+        if (attrib & FILE_ATTRIBUTE_READONLY)
+          SetFileAttributesW(path, 0);
+#ifdef Z7_LEGACY_WIN32
+        if (IsWin32s() && AreStringsEqual_NoCase(temp, kUninstallExe)) {
+          /* This image is loaded; remove it after the process exits. */
+          g_Win32sSelfDeletePending = True;
+          continue;
+        }
+        if (AreStringsEqual_NoCase(temp, kUninstallExe)) {
+          unsigned attempt;
+          for (attempt = 0; attempt < 50; attempt++) {
+            DWORD error;
+            if (DeleteFileW(path)) break;
+            error = GetLastError();
+            if (error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED) break;
+            Sleep(100);
+          }
+        }
+#endif
+        if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES && !DeleteFileW(path))
+        {
+          if (!RemoveFileAfterReboot())
+          {
+            winRes = GetLastError();
+          }
+          /*
+          else
+            needReboot = True;
+          */
+        }
+      }
+    }
+
+    CpyAscii(path + pathLen, k_Lang);
+    RemoveDir();
+
+    path[pathLen] = 0;
+    RemoveDir();
+    
+    if (!g_SilentMode)
+      SendMessage(g_Progress_HWND, PBM_SETPOS, i, 0);
+
+    if (*curName == 0)
+    {
+      SetRegKey_Path();
+      WriteCLSID();
+      SetShellProgramsGroup(g_HWND);
+#ifdef Z7_LEGACY_WIN32
+      if (g_ShortcutError) winRes = g_ShortcutError;
+#endif
+      if (!g_SilentMode)
+        SetWindowTextW(g_InfoLine_HWND, k_7zip_with_Ver L" is uninstalled");
+    }
+  }
+
+  if (winRes != 0)
+    res = SZ_ERROR_FAIL;
+
+  if (res == SZ_OK)
+  {
+    // if (!g_SilentMode && needReboot);
+    return 0;
+  }
+
+  if (!g_SilentMode)
+  {
+    WCHAR m[MAX_PATH + 100];
+    m[0] = 0;
+    if (winRes == 0 || !GetErrorMessage(winRes, m))
+      CpyAscii(m, "ERROR");
+    PrintErrorMessage("System ERROR:", m);
+  }
+  
+  return 1;
+}
+
+
+static void OnClose(void)
+{
+  if (g_Install_was_Pressed && !g_Finished)
+  {
+    if (MessageBoxW(g_HWND,
+        L"Do you want to cancel uninstallation?",
+        k_7zip_with_Ver_Uninstall,
+        MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+      return;
+  }
+  DestroyWindow(g_HWND);
+  g_HWND = NULL;
+}
+
+static
+#ifdef Z7_OLD_WIN_SDK
+  BOOL
+#else
+  INT_PTR
+#endif
+CALLBACK MyDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  UNUSED_VAR(lParam)
+
+  switch (message)
+  {
+    case WM_INITDIALOG:
+      g_Path_HWND = GetDlgItem(hwnd, IDE_EXTRACT_PATH);
+      g_InfoLine_HWND = GetDlgItem(hwnd, IDT_CUR_FILE);
+      g_Progress_HWND = GetDlgItem(hwnd, IDC_PROGRESS);
+
+      SetWindowTextW(hwnd, k_7zip_with_Ver_Uninstall);
+      SetDlgItemTextW(hwnd, IDE_EXTRACT_PATH, path);
+
+      ShowWindow(g_Progress_HWND, SW_HIDE);
+      ShowWindow(g_InfoLine_HWND, SW_HIDE);
+
+      break;
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+      {
+        case IDOK:
+        {
+          if (g_Finished)
+          {
+            OnClose();
+            break;
+          }
+          if (!g_Install_was_Pressed)
+          {
+            SendMessage(hwnd, WM_NEXTDLGCTL, (WPARAM)(void *)GetDlgItem(hwnd, IDCANCEL), TRUE);
+            
+            EnableWindow(g_Path_HWND, FALSE);
+            EnableWindow(GetDlgItem(hwnd, IDOK), FALSE);
+            
+            g_Install_was_Pressed = True;
+            return TRUE;
+          }
+          break;
+        }
+        
+        case IDCANCEL:
+        {
+          OnClose();
+          break;
+        }
+
+        default: return FALSE;
+      }
+      break;
+    
+    case WM_CLOSE:
+      OnClose();
+      break;
+    /*
+    case WM_DESTROY:
+      PostQuitMessage(0);
+      return TRUE;
+    */
+    default:
+      return FALSE;
+  }
+  
+  return TRUE;
+}
+
+
+#ifdef Z7_LEGACY_WIN32
+/* GetTempPath does not guarantee that TEMP exists. Without a temporary
+   copy, the running uninstaller cannot remove its installed executable. */
+static BOOL EnsureTempDirectory(WCHAR *dir)
+{
+  size_t i, root;
+  if (dir[0] && dir[1] == ':' && dir[2] == '\\')
+    root = 3;
+  else if (dir[0] == '\\' && dir[1] == '\\')
+  {
+    root = 2;
+    while (dir[root] && dir[root] != '\\') root++;
+    if (!dir[root]) return FALSE;
+    root++;
+    while (dir[root] && dir[root] != '\\') root++;
+    if (!dir[root]) return FALSE;
+    root++;
+  }
+  else return FALSE;
+  for (i = root; ; i++)
+  {
+    WCHAR saved = dir[i];
+    if (saved == '\\' || !saved)
+    {
+      DWORD attrs;
+      dir[i] = 0;
+      attrs = GetFileAttributesW(dir);
+      if (attrs == INVALID_FILE_ATTRIBUTES)
+      {
+        if (!CreateDirectoryW(dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS)
+        {
+          dir[i] = saved;
+          return FALSE;
+        }
+        attrs = GetFileAttributesW(dir);
+      }
+      dir[i] = saved;
+      if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY))
+        return FALSE;
+    }
+    if (!saved) return TRUE;
+  }
+}
+
+/* Win32s cannot use CopyFile's normal sharing mode to read its own loaded
+   executable. Copy only this private self-image with loader-compatible
+   sharing, and never overwrite an existing temporary file. */
+static BOOL CopySelfForUninstall(const WCHAR *source, const WCHAR *target)
+{
+  HANDLE input, output;
+  BYTE buffer[4096];
+  DWORD count, written, error = ERROR_SUCCESS;
+  if (!(GetVersion() & 0x80000000UL) || (GetVersion() & 255) != 3)
+    return CopyFileW(source, target, TRUE);
+  input = CreateFileW(source, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+  if (input == INVALID_HANDLE_VALUE) return FALSE;
+  output = CreateFileW(target, GENERIC_WRITE, 0, NULL, CREATE_NEW, 0, NULL);
+  if (output == INVALID_HANDLE_VALUE)
+  {
+    error = GetLastError();
+    CloseHandle(input);
+    SetLastError(error);
+    return FALSE;
+  }
+  for (;;)
+  {
+    if (!ReadFile(input, buffer, sizeof(buffer), &count, NULL))
+    {
+      error = GetLastError();
+      break;
+    }
+    if (!count) break;
+    if (!WriteFile(output, buffer, count, &written, NULL))
+    {
+      error = GetLastError();
+      break;
+    }
+    if (written != count) { error = ERROR_WRITE_FAULT; break; }
+  }
+  if (!error && !FlushFileBuffers(output)) error = GetLastError();
+  if (!CloseHandle(output) && !error) error = GetLastError();
+  CloseHandle(input);
+  if (error) DeleteFileW(target);
+  SetLastError(error);
+  return error == ERROR_SUCCESS;
+}
+
+/* Windows 3.1x + Win32s cannot delete a loaded image and has neither
+   MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT) nor WININIT.INI, and the upstream
+   temporary-copy handoff hangs there: with two Win32s tasks alive across the
+   handoff, USER loops forever in SHELL.DLL ShellHookProc after the group is
+   removed (diagnosed in Compat/NT9x/experiments/win32s91). The uninstaller
+   therefore runs in place. It removes every installed file except its own
+   loaded image, removes the Program Manager group, and finally starts a short
+   DOS batch that, once this process has exited and released the image, deletes
+   the leftover Uninst.exe, removes the now-empty installation directory (user
+   files are kept, so a non-empty directory is left intact) and deletes itself.
+   If Windows keeps this task scheduled behind the DOS session long enough that
+   the image is never released, the batch gives up and Uninst.exe and its
+   directory remain; this is a best-effort cleanup, never a hang. */
+static BoolInt g_Win32sSelfDeletePending;
+
+static BoolInt IsPlainDosPath(const char *s)
+{
+  for (; *s; s++)
+    if (*s == ' ' || *s == '"' || *s == '%' || *s == '<' || *s == '>' || *s == '|' || *s == '&')
+      return False;
+  return True;
+}
+
+static void ScheduleWin32sSelfDelete(void)
+{
+  char module[MAX_PATH + 10], dir[MAX_PATH + 10], temp[MAX_PATH + 2], batch[MAX_PATH + 16];
+  char command[MAX_PATH * 2 + 40], comspec[MAX_PATH], text[MAX_PATH * 8 + 600], tempDir[MAX_PATH + 2];
+  DWORD n, len, written;
+  unsigned attempt;
+  HANDLE file = INVALID_HANDLE_VALUE;
+  char *slash = NULL, *p;
+  if (!g_Win32sSelfDeletePending || !IsWin32s())
+    return;
+  n = GetModuleFileNameA(NULL, module, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH || !IsPlainDosPath(module))
+    return;
+  lstrcpyA(dir, module);
+  for (p = dir; *p; p++)
+    if (*p == '\\')
+      slash = p;
+  if (!slash || slash - dir < 3)
+    return;
+  *slash = 0; /* dir = installation directory */
+  if (lstrcmpiA(slash + 1, Z7_UNINSTALL_NAME) != 0)
+    return;
+  len = GetTempPathA(sizeof(temp) - 1, temp);
+  if (len == 0 || len >= sizeof(temp) - 14 || !IsPlainDosPath(temp))
+    return;
+  if (temp[len - 1] != '\\' && temp[len - 1] != '/')
+  {
+    temp[len++] = '\\';
+    temp[len] = 0;
+  }
+  n = GetEnvironmentVariableA("COMSPEC", comspec, sizeof(comspec));
+  if (n == 0 || n >= sizeof(comspec))
+    return;
+  lstrcpyA(tempDir, temp);
+  if (len > 3)
+    tempDir[len - 1] = 0; /* drop trailing backslash for CD */
+  for (attempt = 0; attempt < 32 && file == INVALID_HANDLE_VALUE; attempt++)
+  {
+    wsprintfA(batch, "%s7zUn%04X.BAT", temp, (unsigned)((GetTickCount() + attempt * 0x1F3) & 0xFFFF));
+    file = CreateFileA(batch, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+  }
+  if (file == INVALID_HANDLE_VALUE)
+    return;
+  if (lstrlenA(module) * 5 + lstrlenA(dir) + lstrlenA(batch) * 2 + lstrlenA(tempDir) > 600)
+  {
+    CloseHandle(file);
+    DeleteFileA(batch);
+    return;
+  }
+  /* Runs from the TEMP root (never inside the directory it may remove). Each
+     CALL retries one delete and waits ~1s via CHOICE; 60 attempts bound it. */
+  wsprintfA(text,
+      "@ECHO OFF\r\n"
+      "IF \"%%1\"==\"TRY\" GOTO TRY\r\n"
+      "%c:\r\n"
+      "CD %s\r\n"
+      "FOR %%%%I IN (1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30"
+      " 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60) DO CALL %s TRY\r\n"
+      "IF NOT EXIST %s RMDIR %s\r\n"
+      "DEL %s\r\n"
+      "GOTO END\r\n"
+      ":TRY\r\n"
+      "IF NOT EXIST %s GOTO END\r\n"
+      "DEL %s >NUL\r\n"
+      "IF EXIST %s CHOICE /C:Y /T:Y,1 >NUL\r\n"
+      ":END\r\n",
+      tempDir[0], tempDir, batch, module, dir, batch, module, module, module);
+  n = (DWORD)lstrlenA(text);
+  if (!WriteFile(file, text, n, &written, NULL) || written != n)
+  {
+    CloseHandle(file);
+    DeleteFileA(batch);
+    return;
+  }
+  CloseHandle(file);
+  SetCurrentDirectoryA(tempDir); /* release the installation directory */
+  wsprintfA(command, "%s /C %s", comspec, batch);
+  if (WinExec(command, SW_SHOWNORMAL) <= 31)
+    DeleteFileA(batch);
+}
+#endif
+
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+    #ifdef UNDER_CE
+      LPWSTR
+    #else
+      LPSTR
+    #endif
+    lpCmdLine, int nCmdShow)
+{
+  const WCHAR *cmdParams;
+  BoolInt useTemp = True;
+
+  UNUSED_VAR(hPrevInstance)
+  UNUSED_VAR(lpCmdLine)
+  UNUSED_VAR(nCmdShow)
+
+#ifndef UNDER_CE
+  CoInitialize(NULL);
+#ifdef Z7_LEGACY_WIN32
+  /* Return DOS sharing/media errors to our error handling on Win32s. */
+  if ((GetVersion() & 0x80000000UL) && (GetVersion() & 255) == 3)
+  {
+    UINT oldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
+    SetErrorMode(oldMode | SEM_FAILCRITICALERRORS);
+  }
+  InitCommonControls();
+#endif
+#endif
+
+#ifndef UNDER_CE
+#ifdef Z7_USE_DYN_RegDeleteKeyExW
+   func_RegDeleteKeyExW =
+  (Func_RegDeleteKeyExW) Z7_CAST_FUNC_C GetProcAddress(GetModuleHandleW(L"advapi32.dll"),
+       "RegDeleteKeyExW");
+#endif
+#endif
+
+  {
+    const WCHAR *s = GetCommandLineW();
+
+    #ifndef UNDER_CE
+    s = GetCmdParam(s);
+    #endif
+
+    cmdParams = s;
+
+    for (;;)
+    {
+      {
+        WCHAR c = *s;
+        if (c == 0)
+          break;
+        if (c == ' ')
+        {
+          s++;
+          continue;
+        }
+      }
+
+      {
+        const WCHAR *s2 = GetCmdParam(s);
+        BoolInt error = True;
+        if (cmd[0] == '/')
+        {
+          if (cmd[1] == 'S')
+          {
+            if (cmd[2] == 0)
+            {
+              g_SilentMode = True;
+              error = False;
+            }
+          }
+          else if (cmd[1] == 'N')
+          {
+            if (cmd[2] == 0)
+            {
+              useTemp = False;
+              error = False;
+            }
+          }
+          else if (cmd[1] == 'D' && cmd[2] == '=')
+          {
+            wcscpy(workDir, cmd + 3);
+            // RemoveQuotes(workDir);
+            useTemp = False;
+            error = False;
+          }
+        }
+        s = s2;
+        if (error && cmdError[0] == 0)
+          wcscpy(cmdError, cmd);
+      }
+    }
+
+    if (cmdError[0] != 0)
+    {
+      if (!g_SilentMode)
+        PrintErrorMessage("Unsupported command:", cmdError);
+      return 1;
+    }
+  }
+  
+  {
+    WCHAR *name;
+    const DWORD len = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+    if (len == 0 || len > MAX_PATH)
+      return 1;
+
+    name = NULL;
+    wcscpy(modulePrefix, modulePath);
+
+    {
+      WCHAR *s = modulePrefix;
+      for (;;)
+      {
+        const WCHAR c = *s++;
+        if (c == 0)
+          break;
+        if (c == WCHAR_PATH_SEPARATOR)
+          name = s;
+      }
+    }
+    
+    if (!name)
+      return 1;
+
+    if (!AreStringsEqual_NoCase(name, kUninstallExe))
+      useTemp = False;
+#ifdef Z7_LEGACY_WIN32
+    if (IsWin32s())
+      useTemp = False; /* in-place removal; see ScheduleWin32sSelfDelete */
+#endif
+
+    *name = 0; // keep only prefix for modulePrefix
+  }
+
+
+  if (useTemp)
+  {
+    DWORD winRes = GetTempPathW(MAX_PATH, path);
+
+    // GetTempPath: the returned string ends with a backslash
+    /*
+      {
+        WCHAR s[MAX_PATH + 1];
+        wcscpy(s, path);
+        GetLongPathNameW(s, path, MAX_PATH);
+      }
+    */
+
+    if (winRes != 0 && winRes < MAX_PATH
+        && !IsString1PrefixedByString2_NoCase(modulePrefix, path)
+#ifdef Z7_LEGACY_WIN32
+        && EnsureTempDirectory(path)
+#endif
+        )
+    {
+      unsigned i;
+      DWORD d;
+    
+      const size_t pathLen = wcslen(path);
+      d = (GetTickCount() << 12) ^ (GetCurrentThreadId() << 14) ^ GetCurrentProcessId();
+      
+      for (i = 0; i < 100; i++, d += GetTickCount())
+      {
+        CpyAscii(path + pathLen, "7z");
+        
+        {
+          WCHAR *s = path + wcslen(path);
+          UInt32 value = d;
+          unsigned k;
+          /* Keep the temporary directory valid on NT 3.1 FAT (8.3). */
+          for (k = 0; k < Z7_TEMP_HEX_DIGITS; k++)
+          {
+            const unsigned t = value & 0xF;
+            value >>= 4;
+            s[Z7_TEMP_HEX_DIGITS - 1 - k] = (WCHAR)((t < 10) ? ('0' + t) : ('A' + (t - 10)));
+          }
+          s[k] = 0;
+        }
+        
+        if (DoesFileOrDirExist())
+          continue;
+        if (CreateDirectoryW(path, NULL))
+        {
+          CatAscii(path, STRING_PATH_SEPARATOR);
+          wcscpy(tempPath, path);
+          break;
+        }
+        if (GetLastError() != ERROR_ALREADY_EXISTS)
+          break;
+      }
+      
+      if (tempPath[0] != 0)
+      {
+        wcscpy(copyPath, tempPath);
+        CatAscii(copyPath, "Uninst.exe"); // Short filename also works on NT 3.1 FAT.
+        
+        if (
+#ifdef Z7_LEGACY_WIN32
+            CopySelfForUninstall(modulePath, copyPath)
+#else
+            CopyFileW(modulePath, copyPath, TRUE)
+#endif
+            )
+        {
+          RemoveFileAfterReboot2(copyPath);
+          RemoveFileAfterReboot2(tempPath);
+          
+          {
+            STARTUPINFOW si;
+            PROCESS_INFORMATION pi;
+            cmdLine[0] = 0;
+            
+            // maybe CreateProcess supports path with spaces even without quotes.
+            AddPathParam(cmdLine, copyPath);
+            CatAscii(cmdLine, " /N /D=");
+            AddPathParam(cmdLine, modulePrefix);
+
+            if (cmdParams[0] != 0 && wcslen(cmdParams) < MAX_PATH * 2 + 10)
+              wcscat(cmdLine, cmdParams);
+            
+            memset(&si, 0, sizeof(si));
+            si.cb = sizeof(si);
+            
+            if (CreateProcessW(copyPath, cmdLine, NULL, NULL, FALSE, 0, NULL, tempPath, &si, &pi))
+            {
+              CloseHandle(pi.hThread);
+              if (pi.hProcess)
+              {
+                CloseHandle(pi.hProcess);
+                return 0;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  wcscpy(path, modulePrefix);
+
+  if (workDir[0] != 0)
+  {
+    wcscpy(path, workDir);
+    NormalizePrefix(path);
+  }
+
+  /*
+  if (path[0] == 0)
+  {
+    HKEY key = 0;
+    BoolInt ok = False;
+    LONG res = RegOpenKeyExW(HKEY_CURRENT_USER, k_Reg_Software_7zip, 0, KEY_READ | k_Reg_WOW_Flag, &key);
+    if (res == ERROR_SUCCESS)
+    {
+      ok = MyRegistry_QueryString(key, k_Reg_Path32, path);
+      // ok = MyRegistry_QueryString(key, k_Reg_Path, path);
+      RegCloseKey(key);
+    }
+  }
+  */
+
+
+  if (g_SilentMode)
+  {
+    const int silentRes = Install();
+#ifdef Z7_LEGACY_WIN32
+    ScheduleWin32sSelfDelete();
+#endif
+    return silentRes;
+  }
+
+  {
+    int retCode = 1;
+    g_HWND = CreateDialog(
+        hInstance,
+        // GetModuleHandle(NULL),
+        MAKEINTRESOURCE(IDD_INSTALL), NULL, MyDlgProc);
+    if (!g_HWND)
+      return 1;
+
+    {
+      const HICON hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON));
+      // SendMessage(g_HWND, WM_SETICON, (WPARAM)ICON_SMALL, (LPARAM)hIcon);
+      SendMessage(g_HWND, WM_SETICON, (WPARAM)ICON_BIG, (LPARAM)hIcon);
+    }
+
+    {
+      BOOL bRet;
+      MSG msg;
+      
+      while ((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
+      {
+        if (bRet == -1)
+          break;
+        if (!g_HWND)
+          break;
+
+        if (!IsDialogMessage(g_HWND, &msg))
+        {
+          TranslateMessage(&msg);
+          DispatchMessage(&msg);
+        }
+        if (!g_HWND)
+          break;
+
+        if (g_Install_was_Pressed && !g_Finished)
+        {
+          retCode = Install();
+          g_Finished = True;
+          if (retCode != 0)
+            break;
+          if (!g_HWND)
+            break;
+          {
+            SetDlgItemTextW(g_HWND, IDOK, L"Close");
+            EnableWindow(GetDlgItem(g_HWND, IDOK), TRUE);
+            EnableWindow(GetDlgItem(g_HWND, IDCANCEL), FALSE);
+            SendMessage(g_HWND, WM_NEXTDLGCTL, (WPARAM)(void *)GetDlgItem(g_HWND, IDOK), TRUE);
+          }
+        }
+      }
+
+      if (g_HWND)
+      {
+        DestroyWindow(g_HWND);
+        g_HWND = NULL;
+      }
+    }
+
+#ifdef Z7_LEGACY_WIN32
+    ScheduleWin32sSelfDelete();
+#endif
+    return retCode;
+  }
+}

@@ -1,0 +1,135 @@
+#include <windows.h>
+1 ICON "../../CPP/7zip/UI/FileManager/FM.ico"
+100 RCDATA "../../CPP/7zip/UI/FileManager/7zipLogo.ico"
+200 DIALOG 0, 0, 230, 168
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "About 7-Zip"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "7-Zip 26.05 (x86-16)", 201, 8, 54, 210, 10
+ LTEXT "Copyright (c) 1999-2026 Igor Pavlov", -1, 8, 68, 210, 10
+ LTEXT "7-Zip is free software", -1, 8, 82, 210, 10
+ LTEXT "Windows 3.0/3.1x port v1.0 by ages2001", -1, 8, 102, 210, 10
+ LTEXT "Native 7z and ZIP: create, extract, test and list.", -1, 8, 119, 210, 20
+ DEFPUSHBUTTON "OK", IDOK, 170, 146, 52, 14
+END
+
+300 DIALOG 0, 0, 245, 118
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Extract archive"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "Extract to a new directory:", -1, 8, 8, 225, 10
+ EDITTEXT 301, 8, 22, 225, 14, ES_AUTOHSCROLL
+ LTEXT "Existing destinations are never overwritten. Archive names must fit DOS 8.3 paths.", -1, 8, 44, 225, 24
+ CONTROL "Extract without folder paths", 302, "BUTTON", BS_AUTOCHECKBOX | WS_TABSTOP, 8, 74, 225, 12
+ DEFPUSHBUTTON "Extract", IDOK, 112, 96, 58, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 96, 55, 14
+END
+
+400 DIALOG 0, 0, 245, 260
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Create archive"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "New archive:", 404, 8, 8, 225, 10
+ EDITTEXT 401, 8, 20, 225, 14, ES_AUTOHSCROLL
+ LTEXT "Files or folders (one path per line):", -1, 8, 40, 225, 10
+ EDITTEXT 402, 8, 52, 225, 62, ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+ LTEXT "Archive format:", -1, 8, 120, 225, 10
+ COMBOBOX 406, 8, 132, 225, 42, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+ LTEXT "Compression method:", -1, 8, 154, 225, 10
+ COMBOBOX 403, 8, 166, 225, 42, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+ LTEXT "Password (optional; encrypts 7z with AES-256):", 408, 8, 188, 225, 10
+ EDITTEXT 407, 8, 200, 225, 14, ES_AUTOHSCROLL | ES_PASSWORD
+ LTEXT "Existing archives are never overwritten. Use DOS 8.3 paths.", 405, 8, 220, 225, 18
+ DEFPUSHBUTTON "Create", IDOK, 112, 240, 58, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 240, 55, 14
+END
+
+500 DIALOG 0, 0, 245, 112
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Rename archive entry"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "Current archive path:", -1, 8, 8, 225, 10
+ EDITTEXT 501, 8, 20, 225, 14, ES_AUTOHSCROLL | ES_READONLY
+ LTEXT "New relative path:", -1, 8, 40, 225, 10
+ EDITTEXT 502, 8, 52, 225, 14, ES_AUTOHSCROLL
+ LTEXT "Folder contents follow the new path. Existing metadata is preserved.", -1, 8, 72, 225, 20
+ DEFPUSHBUTTON "Rename", IDOK, 112, 94, 58, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 94, 55, 14
+END
+
+600 DIALOG 0, 0, 245, 130
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "File associations"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "Open these archives with 7-Zip from File Manager:", -1, 8, 8, 225, 18
+ CONTROL "7z archives (.7z)", 601, "BUTTON", BS_AUTOCHECKBOX | WS_TABSTOP, 8, 32, 225, 12
+ CONTROL "ZIP archives (.zip)", 602, "BUTTON", BS_AUTOCHECKBOX | WS_TABSTOP, 8, 50, 225, 12
+ LTEXT "Clearing a box restores the previous association. Changes made by another application are preserved.", -1, 8, 72, 225, 26
+ DEFPUSHBUTTON "Apply", IDOK, 112, 108, 58, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 108, 55, 14
+END
+
+700 DIALOG 0, 0, 245, 110
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Calculate file checksums"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "File on disk:", -1, 8, 8, 225, 10
+ EDITTEXT 701, 8, 20, 225, 14, ES_AUTOHSCROLL
+ LTEXT "Method:", -1, 8, 42, 225, 10
+ COMBOBOX 702, 8, 54, 225, 94, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+ DEFPUSHBUTTON "Calculate", IDOK, 106, 86, 64, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 86, 55, 14
+END
+710 DIALOG 0, 0, 290, 210
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "File checksums"
+FONT 8, "MS Sans Serif"
+BEGIN
+ EDITTEXT 711, 8, 8, 274, 172, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL
+ PUSHBUTTON "Copy", 712, 154, 188, 58, 14
+ DEFPUSHBUTTON "Close", IDOK, 220, 188, 62, 14
+END
+
+800 DIALOG 0, 0, 245, 100
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Filesystem operation"
+FONT 8, "MS Sans Serif"
+BEGIN
+ LTEXT "Destination:", 801, 8, 8, 225, 10
+ EDITTEXT 802, 8, 22, 225, 14, ES_AUTOHSCROLL
+ LTEXT "Existing destination files and folders are preserved. Use a new name when needed.", -1, 8, 44, 225, 24
+ DEFPUSHBUTTON "OK", IDOK, 112, 78, 58, 14
+ PUSHBUTTON "Cancel", IDCANCEL, 178, 78, 55, 14
+END
+
+1001 BITMAP "../../CPP/7zip/UI/FileManager/Add2.bmp"
+1002 BITMAP "../../CPP/7zip/UI/FileManager/Extract2.bmp"
+1003 BITMAP "../../CPP/7zip/UI/FileManager/Test2.bmp"
+1004 BITMAP "../../CPP/7zip/UI/FileManager/Copy2.bmp"
+1005 BITMAP "../../CPP/7zip/UI/FileManager/Move2.bmp"
+1006 BITMAP "../../CPP/7zip/UI/FileManager/Delete2.bmp"
+1007 BITMAP "../../CPP/7zip/UI/FileManager/Info2.bmp"
+900 DIALOG 0, 0, 290, 184
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME
+CAPTION "Properties"
+FONT 8, "MS Sans Serif"
+BEGIN
+ EDITTEXT 901, 8, 8, 274, 146, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL
+ PUSHBUTTON "Copy", 902, 154, 162, 58, 14
+ DEFPUSHBUTTON "Close", IDOK, 220, 162, 62, 14
+END
+
+/* Original BMP file bytes for the native toolbar renderer. */
+2001 RCDATA "../../CPP/7zip/UI/FileManager/Add2.bmp"
+2002 RCDATA "../../CPP/7zip/UI/FileManager/Extract2.bmp"
+2003 RCDATA "../../CPP/7zip/UI/FileManager/Test2.bmp"
+2004 RCDATA "../../CPP/7zip/UI/FileManager/Copy2.bmp"
+2005 RCDATA "../../CPP/7zip/UI/FileManager/Move2.bmp"
+2006 RCDATA "../../CPP/7zip/UI/FileManager/Delete2.bmp"
+2007 RCDATA "../../CPP/7zip/UI/FileManager/Info2.bmp"

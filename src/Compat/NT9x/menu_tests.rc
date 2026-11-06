@@ -1,0 +1,17 @@
+#include <windows.h>
+401 MENUEX
+BEGIN
+ POPUP "File", 510
+ BEGIN
+  MENUITEM "Open", 511
+  MENUITEM "", 0, MFT_SEPARATOR
+  POPUP "Nested", 512
+  BEGIN
+   MENUITEM "Leaf", 513
+  END
+ END
+ POPUP "Help", 520
+ BEGIN
+  MENUITEM "About", 521
+ END
+END

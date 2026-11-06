@@ -1,0 +1,38 @@
+7-Zip 26.05 legacy port v1.0 - NT/9x + Win32s regression matrix
+Combined installer: bin/win32/7zsetw32.exe
+Host: QEMU 10.0.x (one-insn-per-tb for Win32s/Win95), private clones of the
+uploaded guest disks; originals never modified.
+
+OS              Default path            Shortcuts              Install  FileMgr  Uninstall
+Windows NT 3.1  C:\7-Zip                Program Manager group  PASS     PASS*    PASS
+Windows NT 3.51 C:\7-Zip                Program Manager group  PASS     PASS     PASS
+Windows NT 4.0  C:\Program Files\7-Zip  Desktop + Programs     PASS     PASS     PASS
+Windows 95 RTM  C:\Program Files\7-Zip  Desktop + Programs     PASS     PASS     PASS
+Win3.1x+Win32s  C:\7-Zip                Program Manager group  PASS     PASS**   PASS(no hang)
+
+*  NT 3.1: additionally created BOOT.7z and verified Test = "no errors".
+** Win32s: drive view (new adapter), typed registry persistence (new adapter,
+   42/42 tests), 7z create/open/Test/Extract/overwrite, .7z/.zip association
+   written to and read back from the typed registry via the ANSI shell path.
+   About shows "x86-32" and the "port v1.0" line (shared About, verified on NT4).
+
+Installed payload SHA-256 values matched the embedded manifest on every OS.
+The installer selects nt/ or w32s/ files by platform at run time; the shell
+extension (7-zip.dll) is installed on NT4/Win95 only.
+
+Uninstall results: Program Manager group / Desktop+Programs shortcuts, all
+installed payload files and the registry entries are removed on every OS; user
+files are preserved. NT 3.1/3.51/4 and Windows 95 remove the installation
+directory completely. On Win32s the uninstaller runs in place (no hang) and
+best-effort deletes its own image; the uninstaller executable and its directory
+may remain because a loaded Win32s module cannot delete itself and Windows 3.1
+has no delayed-delete mechanism.
+
+Native16 and DOS (rebuilt from current source with Open Watcom / DJGPP):
+Target          Binary          Verified on          Result
+native16 GUI    7ZFM16.EXE      Windows 3.1          browse + create(LZMA) + Test OK, byte-exact
+native16 CLI    7Z16C.EXE       DOS (MS-DOS 6)       create + Test OK
+win16 setup     7zsetw16.exe     Windows 3.1          installs 7ZFM16.EXE (GUI-only), installed GUI runs
+dos16 setup     7zsetd16.exe    DOS (MS-DOS 6)       installs 7Z16C.EXE, installed CLI create + Test OK
+DOS CLI         7Z.EXE          DOS (MS-DOS 6)        create + Test + Extract OK, byte-exact (CWSDPMI-bound)
+dos32 setup     7zsetd32.exe    DOS                  install to C:\7-Zip, installed 7Z.EXE runs
